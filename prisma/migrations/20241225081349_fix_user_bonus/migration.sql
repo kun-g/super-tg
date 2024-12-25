@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `userbonus` ADD COLUMN `sendStatus` VARCHAR(191) NOT NULL DEFAULT 'PENDING';

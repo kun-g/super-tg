@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConvStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  COMPLETED
+}
+
+enum SenderType {
+  USER
+  AI
+}
+
+enum BonusStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model PricingState {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // 乐观锁: 每次更新时, 需要检查 version 是否匹配
+  version Int @default(1)
+
+  // 已生成过多少次对话(或多少份报价), 用于计算下一个对话要多少钱
+  count Int @default(0)
+
+  cost       Decimal      @default(0.0)
+  PriceQuote PriceQuote[]
+}
+
+model AiModel {
+  id               String  @id @default("ONLY_ONE") // 只需一条记录，可写死
+  isBusy           Boolean @default(false) // 标记模型是否被占用
+  version          Int     @default(1) // 乐观锁版本号
+  currentUserId    String? // 记录当前占用模型的用户ID（可选）
+  currentSessionId String? // 记录当前占用模型的会话ID（可选）
+}
+
+model User {
+  id      Int    @id @default(autoincrement())
+  address String
+
+  Order       Order[]
+  HourlyBonus HourlyBonus[]
+  UserBonus   UserBonus[]
+}
+
+model Message {
+  // 自增加
+  id         Int        @id @default(autoincrement())
+  createdAt  DateTime   @default(now())
+  content    String
+  address    String?
+  senderType SenderType
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  createdAt     DateTime      @default(now())
+  expiresAt     DateTime
+  status        OrderStatus   @default(PENDING)
+  cost          Decimal       @default(0.0)
+  content       String        @default("")
+  createBy      String        @default("")
+  User          User?         @relation(fields: [userId], references: [id])
+  userId        Int?
+  HourlyBonus   HourlyBonus[]
+  HourlyBonusId String?
+}
+
+model DragonState {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  state     String   @default("unExtracted")
+}
+
+model PriceQuote {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // 报价时所看到的 "版本" (对应 PricingState.version)
+  lockedVersion Int
+
+  // 报价时所拿到的 "价格"
+  lockedCost Decimal
+
+  // 该报价是否已被使用/确认/过期
+  status String @default("PENDING")
+
+  pricingStateId String?
+  pricingState   PricingState? @relation(fields: [pricingStateId], references: [id])
+  userId         Int?
+
+  expireAt DateTime?
+}
+
+// ========== HourlyBonus 模型 ==========
+model HourlyBonus {
+  id                String      @id @default(uuid())
+  startTime         BigInt
+  endTime           BigInt
+  totalBonus        Decimal     @default(0.0)
+  lastOrderId       String? // FK to Order
+  lastOrder         Order?      @relation(fields: [lastOrderId], references: [id])
+  status            BonusStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  userBonuses       UserBonus[]
+  User              User?       @relation(fields: [userId], references: [id])
+  userId            Int?
+  lastSenderAddress String?
+}
+
+// ========== UserBonus 模型 ==========
+model UserBonus {
+  id            String      @id @default(uuid())
+  hourlyBonusId String
+  hourlyBonus   HourlyBonus @relation(fields: [hourlyBonusId], references: [id])
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id])
+  bonusAmount   Decimal     @default(0.0)
+  sendStatus    String      @default("PENDING")
+}
